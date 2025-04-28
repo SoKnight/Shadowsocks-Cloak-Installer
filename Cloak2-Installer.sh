@@ -1,4 +1,5 @@
 #!/bin/bash
+script_dir="$(cd "$(dirname "${BASH_SCRIPT[0]}")" && pwd)"
 num_regex='^[0-9]+$'
 function GetRandomPort() {
 	local __resultvar=$1
@@ -28,8 +29,8 @@ function PrintWarning(){
 }
 function RunCloakAdmin(){
 	ck-client -s 127.0.0.1 -p $PORT -a "$(jq -r '.AdminUID' ckserver.json)" -l "$LOCAL_PANEL_PORT" -c ckadminclient.json & #The & will make this to run in background
-	echo "Please wait 5 seconds to let the ck-client start..."
-	sleep 5 # you can change this number if you like
+	echo "Please wait 3 seconds to let the ck-client start..."
+	sleep 3 # you can change this number if you like
 }
 function GenerateProxyBook() {
 	#Format of the proxy book is arr[method] = "(t/d)ip:port"
@@ -78,12 +79,43 @@ function ListAllUIDs() {
 	wait $! 2>/dev/null
 	mapfile -t UIDS_2 < <(jq -r '.[].UID?' <<<"$RESTRICTED_UIDS")
 	UIDS=("${UIDS[@]}" "${UIDS_2[@]}") #Merge them
+
+	declare -gA UID_NAME_MAP
+	while IFS='|' read -r uid name; do
+	    uid=$(echo "$uid" | xargs)
+	    name=$(echo "$name" | xargs)
+	    if [[ -n $uid && -n $name ]]; then
+	        UID_NAME_MAP["$uid"]="$name"
+	    fi
+	done < "$script_dir/uids.txt"
+
+	sleep 5
+}
+function GetNameFromUID() {
+    local uid="$1"
+    local name="${UID_NAME_MAP[$uid]}"
+	if [[ -n "$name" ]]; then
+        echo "$name"
+    else
+        echo "<unknown>"
+    fi
+}
+function GetServerNameUrlPart() {
+    local file="$script_dir/server-name.txt"
+    if [[ -f "$file" ]]; then
+        read -r name < "$file"
+        echo "#$name"
+    else
+        echo ""
+    fi
 }
 function ShowConnectionInfo() {
-	echo "Your Server IP: $PUBLIC_IP"
-	echo "Password:       $Password"
-	echo "Port:           $PORT"
-	echo "Encryption:     $cipher"
+	name=$(GetNameFromUID "$ckuid")
+	echo "===================== $name ====================="
+	echo "Your Server IP:       $PUBLIC_IP"
+	echo "Password:             $Password"
+	echo "Port:                 $PORT"
+	echo "Encryption:           $cipher"
 	echo "Cloak Proxy Method:   shadowsocks"
 	echo "Cloak UID:            $ckuid"
 	echo "Cloak Public Key:     $ckpub"
@@ -91,20 +123,23 @@ function ShowConnectionInfo() {
 	echo "Cloak Server Name:    Domain or ip of RedirAddr (Default bing.com)"
 	echo "Cloak NumConn:        4 or more"
 	echo "Cloak MaskBrowser:    firefox or chrome"
-	echo "Cloak StreamTimeout:	300"
+	echo "Cloak StreamTimeout:  300"
 	echo "Also read more about these arguments at https://github.com/cbeuw/Cloak#client"
 	echo
 	echo "Download cloak client for android from https://github.com/cbeuw/Cloak-android/releases"
 	echo "Download cloak client for PC from https://github.com/cbeuw/Cloak/releases"
 	echo
 	echo
-	echo
 	ckpub=$(echo "$ckpub" | sed -r 's/=/\\=/g')
 	ckuid=$(echo "$ckuid" | sed -r 's/=/\\=/g')
 	SERVER_BASE64=$(printf "%s" "$cipher:$Password" | base64)
 	SERVER_CLOAK_ARGS="ck-client;UID=$ckuid;PublicKey=$ckpub;ServerName=bing.com;BrowserSig=chrome;NumConn=4;ProxyMethod=shadowsocks;EncryptionMethod=plain;StreamTimeout=300"
-	SERVER_CLOAK_ARGS=$(printf "%s" "$SERVER_CLOAK_ARGS" | curl -Gso /dev/null -w %{url_effective} --data-urlencode @- "" | cut -c 3-) #https://stackoverflow.com/a/10797966/4213397
+	SERVER_CLOAK_ARGS=$(printf "%s" "$SERVER_CLOAK_ARGS" | curl -Gs -o /dev/null -w "%{url_effective}" --data-urlencode @- "http://localhost/" | sed 's|^http://localhost/?||')
 	SERVER_BASE64="ss://$SERVER_BASE64@$PUBLIC_IP:$PORT?plugin=$SERVER_CLOAK_ARGS"
+    SERVER_NAME=$(GetServerNameUrlPart)
+    if [[ -n "$SERVER_NAME" ]]; then
+        SERVER_BASE64="$SERVER_BASE64$SERVER_NAME"
+    fi
 	qrencode -t ansiutf8 "$SERVER_BASE64"
 	echo
 	echo
@@ -327,6 +362,8 @@ if [ -d "/etc/cloak" ]; then
 			echo "Ok once more here is your UDID: $ckbuid"
 			echo "You can list it again later with running this script again."
 		fi
+		read -r -p "Enter a name for this profile: " -e NAME
+		echo "$ckbuid | $NAME" >> "$script_dir/uids.txt"
 		systemctl restart cloak-server
 		echo "Done"
 		;;
@@ -336,7 +373,8 @@ if [ -d "/etc/cloak" ]; then
 		clear
 		COUNTER=1
 		for i in "${UIDS[@]}"; do
-			echo "$COUNTER) $i"
+			name=$(GetNameFromUID "$i")
+			echo "$COUNTER) $i | $name"
 			COUNTER=$((COUNTER + 1))
 		done
 		read -r -p "Which UID you want to revoke?(Choose by number) " OPTION
@@ -396,7 +434,8 @@ if [ -d "/etc/cloak" ]; then
 		clear
 		COUNTER=1
 		for i in "${UIDS[@]}"; do
-			echo "$COUNTER) $i"
+			name=$(GetNameFromUID "$i")
+			echo "$COUNTER) $i | $name"
 			COUNTER=$((COUNTER + 1))
 		done
 		read -r -p "Which UID you want to see it's link?(Choose by number) " OPTION
