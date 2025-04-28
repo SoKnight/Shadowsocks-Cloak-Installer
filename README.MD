@@ -1,4 +1,3 @@
-
 # Cloak Installer With Shadowsocks
 A script to install Cloak in your server with or without shadowsocks.
 
@@ -10,6 +9,11 @@ A script to install Cloak in your server with or without shadowsocks.
 * Automatic service configuration
 * Automatically setup firewall
 * Support Debian, Ubuntu, CentOS and Raspbian Buster
+
+## Patches by SoKnight
+* Ability to set a name for the profile, this associations are stored in the `uids.txt` file inside the script directory
+* Ability to set an alias for the server, this alias is stored in the `server-name.txt` file inside the script directory
+
 ## What is [Cloak](https://github.com/cbeuw/Cloak)?
 Cloak is a universal pluggable transport that cryptographically obfuscates proxy traffic as legitimate HTTPS traffic, disguises the proxy server as a normal web server, multiplexes traffic through multiple TCP connections and provides multi-user usage control.
 
